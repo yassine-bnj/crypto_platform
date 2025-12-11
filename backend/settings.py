@@ -39,7 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'core',
-    'django_celery_beat'
+    'django_celery_beat',
+    'corsheaders'
 ]
 
 MIDDLEWARE = [
@@ -50,6 +51,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware'
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -151,3 +153,8 @@ CELERY_RESULT_SERIALIZER = 'json'
 
 # Optionnel mais recommandé sur Windows
 CELERY_WORKER_POOL = 'threads'  # au lieu de 'prefork'
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    
+]
