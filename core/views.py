@@ -1,10 +1,10 @@
+# views.py
 from datetime import timedelta
 from django.utils.timezone import now
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import CryptoPrice
-from .serializers import CryptoPriceSerializer
-from django.utils import timezone
+from .models import Asset, PriceHistory
+from .serializers import PriceHistorySerializer
 
 @api_view(['GET'])
 def price_history(request, symbol):
@@ -22,19 +22,24 @@ def price_history(request, symbol):
 
     start = ranges.get(range_param, end - timedelta(days=1))
 
-    prices = CryptoPrice.objects.filter(
-        symbol=symbol.upper(),
-        last_updated__range=[start, end]
-    ).order_by('last_updated')
+    try:
+        asset = Asset.objects.get(symbol=symbol.upper())
+    except Asset.DoesNotExist:
+        return Response({"error": "Asset not found"}, status=404)
 
-    return Response(CryptoPriceSerializer(prices, many=True).data)
+    prices = PriceHistory.objects.filter(
+        asset=asset,
+        timestamp__range=[start, end]
+    ).order_by('timestamp')
+
+    return Response(PriceHistorySerializer(prices, many=True).data)
+
 
 @api_view(['GET'])
 def ohlc_data(request, symbol):
     interval = request.GET.get("interval", "1h")
     range_param = request.GET.get("range", "24h")
 
-    # même logique que price_history pour la plage de temps
     end = now()
     ranges = {
         "1h": end - timedelta(hours=1),
@@ -42,79 +47,121 @@ def ohlc_data(request, symbol):
         "7d": end - timedelta(days=7),
         "30d": end - timedelta(days=30),
     }
-    start = ranges.get(range_param)
+    start = ranges.get(range_param, end - timedelta(days=1))
 
-    prices = CryptoPrice.objects.filter(
-        symbol=symbol.upper(),
-        last_updated__range=[start, end]
-    ).order_by('last_updated')
+    try:
+        asset = Asset.objects.get(symbol=symbol.upper())
+    except Asset.DoesNotExist:
+        return Response({"error": "Asset not found"}, status=404)
 
-    # grouper les données selon l’intervalle
-    candles = []
-    group = []
+    prices = PriceHistory.objects.filter(
+        asset=asset,
+        timestamp__range=[start, end]
+    ).order_by('timestamp')
 
-    current_bucket = None
+    if not prices.exists():
+        return Response([])
+
+    # Définir la taille du bucket (en minutes)
+    bucket_minutes = {
+        "1m": 1,
+        "5m": 5,
+        "15m": 15,
+        "1h": 60,
+        "4h": 240,
+        "1d": 1440,
+    }.get(interval, 60)
+
+    from collections import defaultdict
+    buckets = defaultdict(list)
 
     for p in prices:
-        bucket = p.last_updated.replace(
-            minute=(p.last_updated.minute // 1) * 1,  # à améliorer selon interval
-            second=0, microsecond=0
+        # Tronquer le timestamp à l'intervalle
+        minutes = (p.timestamp.hour * 60 + p.timestamp.minute) // bucket_minutes * bucket_minutes
+        bucket_time = p.timestamp.replace(
+            hour=minutes // 60,
+            minute=minutes % 60,
+            second=0,
+            microsecond=0
         )
+        buckets[bucket_time].append(p)
 
-        if current_bucket is None:
-            current_bucket = bucket
-
-        if bucket != current_bucket:
-            candles.append({
-                "timestamp": current_bucket,
-                "open": group[0].price,
-                "close": group[-1].price,
-                "low": min(x.price for x in group),
-                "high": max(x.price for x in group),
-            })
-            group = []
-            current_bucket = bucket
-
-        group.append(p)
+    candles = []
+    for bucket_start in sorted(buckets.keys()):
+        group = buckets[bucket_start]
+        prices_in_bucket = [float(p.price_usd) for p in group]
+        candles.append({
+            "timestamp": bucket_start.isoformat(),
+            "open": prices_in_bucket[0],
+            "close": prices_in_bucket[-1],
+            "low": min(prices_in_bucket),
+            "high": max(prices_in_bucket),
+        })
 
     return Response(candles)
+
+
 @api_view(["GET"])
 def heatmap(request):
     range_param = request.GET.get("range", "24h")
+    now_time = now()
 
-    now = timezone.now()
-
-    if range_param == "24h":
-        start_time = now - timedelta(hours=24)
-    elif range_param == "7d":
-        start_time = now - timedelta(days=7)
-    elif range_param == "1h":
-        start_time = now - timedelta(hours=1)
-    else:
+    range_deltas = {
+        "1h": timedelta(hours=1),
+        "24h": timedelta(days=1),
+        "7d": timedelta(days=7),
+    }
+    
+    if range_param not in range_deltas:
         return Response({"error": "Invalid range"}, status=400)
 
-    prices = CryptoPrice.objects.filter(last_updated__gte=start_time)
+    start_time = now_time - range_deltas[range_param]
+
+    # Récupérer le dernier point de chaque actif dans la plage
+    from django.db.models import Max
+    latest_timestamps = PriceHistory.objects.filter(
+        timestamp__gte=start_time
+    ).values('asset').annotate(latest_ts=Max('timestamp'))
+
+    # Créer une liste de (asset_id, latest_ts)
+    latest_list = [(item['asset'], item['latest_ts']) for item in latest_timestamps]
+
+    # Récupérer les objets PriceHistory correspondants
+    from django.db.models import Q
+    query = Q()
+    for asset_id, ts in latest_list:
+        query |= Q(asset_id=asset_id, timestamp=ts)
+
+    latest_prices = PriceHistory.objects.filter(query).select_related('asset')
 
     data = {}
-
-    for p in prices:
-        data[p.symbol] = {
-            "symbol": p.symbol,
-            "name": p.name,
-            "price": p.price_usd,
-            "percent_change_1h": p.percent_change_1h,
-            "percent_change_24h": p.percent_change_24h,
-            "percent_change_7d": p.percent_change_7d,
-            "market_cap": p.market_cap,
+    for p in latest_prices:
+        data[p.asset.symbol] = {
+            "symbol": p.asset.symbol,
+            "name": p.asset.name,
+            "price": float(p.price_usd),
+            "percent_change_1h": p.price_change_percentage_1h,
+            "percent_change_24h": p.price_change_percentage_24h,
+            "percent_change_7d": p.price_change_percentage_7d,
+            "market_cap": float(p.market_cap),
         }
 
     return Response(data)
 
+
 @api_view(['GET'])
 def indicators(request, symbol):
-    prices = CryptoPrice.objects.filter(symbol=symbol.upper()).order_by("last_updated")
+    try:
+        asset = Asset.objects.get(symbol=symbol.upper())
+    except Asset.DoesNotExist:
+        return Response({"error": "Asset not found"}, status=404)
 
-    values = [p.price_usd for p in prices]
+    # Prendre les 100 derniers points (ou plus si besoin)
+    prices = PriceHistory.objects.filter(
+        asset=asset
+    ).order_by("timestamp").values_list('price_usd', flat=True)
+
+    values = [float(p) for p in prices]
 
     def sma(data, window):
         if len(data) < window:
