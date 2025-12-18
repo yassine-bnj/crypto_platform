@@ -1,0 +1,12 @@
+.env.local
+.env
+.next/
+out/
+build/
+dist/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+.vercel
