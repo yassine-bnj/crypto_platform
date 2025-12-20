@@ -5,6 +5,8 @@ from django.contrib.auth.models import AbstractUser
 # ====== Modèle utilisateur  ======
 class User(AbstractUser):
     role = models.CharField(max_length=10, default='user')
+    phone = models.CharField(max_length=30, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
 
 # ====== Modèle Asset : données fixes sur la crypto ======
 class Asset(models.Model):

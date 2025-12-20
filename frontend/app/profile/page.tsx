@@ -1,24 +1,54 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Sidebar from "@/components/dashboard/sidebar"
 import { User, Shield, Bell, Zap, Camera } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useAuth } from "@/context/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export default function ProfilePage() {
+  const { user, updateProfile } = useAuth()
+
   const [userData, setUserData] = useState({
-    name: "Yassine bnj",
-    email: "Yassinebnj@example.com",
-    phone: "+1 (555) 123-4567",
-    country: "United States",
-    bio: "Passionate cryptocurrency trader",
+    name: "",
+    email: "",
+    phone: "",
+    country: "",
+    bio: "",
   })
+
+  useEffect(() => {
+    if (user) {
+      setUserData({
+        name: user.name || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        country: user.country || "",
+        bio: "",
+      })
+    }
+  }, [user])
 
   const [isEditing, setIsEditing] = useState(false)
 
-  const handleSave = () => {
-    setIsEditing(false)
+  const { toast } = useToast()
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      await updateProfile({ full_name: userData.name, phone: userData.phone, country: userData.country })
+      setIsEditing(false)
+      toast({ title: 'Profile updated', description: 'Your profile was saved successfully.' })
+    } catch (err: any) {
+      console.error(err)
+      const message = err?.message || 'Failed to update profile'
+      toast({ title: 'Update failed', description: message })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -89,16 +119,16 @@ export default function ProfilePage() {
                           className="w-full px-4 py-2 bg-secondary/50 border border-border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
-                      <div className="space-y-2 col-span-2">
-                        <label className="text-sm font-semibold">Email</label>
-                        <input
-                          type="email"
-                          value={userData.email}
-                          disabled={!isEditing}
-                          onChange={(e) => setUserData({ ...userData, email: e.target.value })}
-                          className="w-full px-4 py-2 bg-secondary/50 border border-border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                      </div>
+                        <div className="space-y-2 col-span-2">
+                          <label className="text-sm font-semibold">Email</label>
+                          <input
+                            type="email"
+                            value={userData.email}
+                            disabled
+                            readOnly
+                            className="w-full px-4 py-2 bg-secondary/50 border border-border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                        </div>
                       <div className="space-y-2 col-span-2">
                         <label className="text-sm font-semibold">Country</label>
                         <input
@@ -113,9 +143,10 @@ export default function ProfilePage() {
                     {isEditing && (
                       <button
                         onClick={handleSave}
-                        className="w-full py-2 bg-accent text-accent-foreground rounded-lg font-semibold hover:bg-accent/90 transition-colors"
+                        disabled={isSaving}
+                        className="w-full py-2 bg-accent text-accent-foreground rounded-lg font-semibold hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Save Changes
+                        {isSaving ? 'Saving...' : 'Save Changes'}
                       </button>
                     )}
                   </CardContent>

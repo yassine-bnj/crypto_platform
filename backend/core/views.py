@@ -6,8 +6,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
 from .models import Asset, PriceHistory
 from .serializers import PriceHistorySerializer
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
 @api_view(['GET'])
 def price_history(request, symbol):
@@ -224,4 +227,126 @@ def login_view(request):
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
     refresh = RefreshToken.for_user(user_auth)
-    return Response({'access': str(refresh.access_token), 'refresh': str(refresh)})
+    access = str(refresh.access_token)
+    refresh_token = str(refresh)
+
+    response = Response({'access': access})
+    # set httpOnly refresh cookie
+    # For development on localhost, secure=False. Set secure=True in production with HTTPS.
+    response.set_cookie(
+        'refresh_token',
+        refresh_token,
+        httponly=True,
+        secure=False,
+        samesite='Lax',
+        path='/',
+    )
+    return response
+
+
+@api_view(['POST'])
+def refresh_token(request):
+    # Read refresh token from cookie (httpOnly) or body fallback
+    refresh_token = request.COOKIES.get('refresh_token') or request.data.get('refresh')
+    if not refresh_token:
+        return Response({'detail': 'Missing refresh token'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        refresh = RefreshToken(refresh_token)
+        # Optionally rotate: issue new refresh and set cookie - for now just return access
+        access = str(refresh.access_token)
+        response = Response({'access': access})
+        return response
+    except Exception:
+        return Response({'detail': 'Invalid refresh token'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+
+@api_view(['POST'])
+def logout_view(request):
+    # blacklist refresh token if provided in cookie or body, then clear cookie
+    token = request.COOKIES.get('refresh_token') or request.data.get('refresh')
+    if token:
+        try:
+            rt = RefreshToken(token)
+            # blacklist (requires token_blacklist app)
+            try:
+                rt.blacklist()
+            except AttributeError:
+                # blacklist not enabled/available
+                pass
+        except Exception:
+            pass
+
+    response = Response({'detail': 'Logged out'}, status=status.HTTP_200_OK)
+    # delete cookie
+    response.delete_cookie('refresh_token', path='/')
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    current_password = request.data.get('current_password')
+    new_password = request.data.get('new_password')
+
+    if not current_password or not new_password:
+        return Response({'detail': 'Missing fields'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = request.user
+    if not user.check_password(current_password):
+        return Response({'detail': 'Current password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(new_password)
+    user.save()
+
+    # Blacklist any outstanding refresh tokens for this user so password change invalidates sessions
+    try:
+        for token in OutstandingToken.objects.filter(user=user):
+            BlacklistedToken.objects.get_or_create(token=token)
+    except Exception:
+        # token blacklisting may not be available; ignore errors
+        pass
+
+    response = Response({'detail': 'Password changed'}, status=status.HTTP_200_OK)
+    # remove refresh cookie so client must re-login to obtain a new refresh token
+    response.delete_cookie('refresh_token', path='/')
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    """Update user's profile: first_name (full name), email, phone, country"""
+    user = request.user
+    full_name = request.data.get('full_name')
+    email = request.data.get('email')
+    phone = request.data.get('phone')
+    country = request.data.get('country')
+
+    # Validate required fields (email optional but if provided must be unique)
+    if email and email != user.email:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if User.objects.filter(email=email).exclude(pk=user.pk).exists():
+            return Response({'detail': 'Email already in use'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if full_name is not None:
+        user.first_name = full_name
+    if email is not None:
+        user.email = email
+    if phone is not None:
+        user.phone = phone
+    if country is not None:
+        user.country = country
+
+    user.save()
+
+    return Response({'id': user.id, 'email': user.email, 'name': user.first_name, 'phone': user.phone, 'country': user.country})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def me(request):
+    user = request.user
+    return Response({'id': user.id, 'email': user.email, 'name': user.first_name, 'phone': getattr(user, 'phone', None), 'country': getattr(user, 'country', None)})

@@ -6,12 +6,13 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff } from "lucide-react"
-import { login } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/context/auth"
 
 export default function SignIn() {
   const router = useRouter()
   const { toast } = useToast()
+  const { login } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)

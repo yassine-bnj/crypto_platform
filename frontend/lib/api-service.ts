@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
 
 export interface PriceHistoryItem {
   symbol: string
@@ -175,6 +175,21 @@ export async function register(name: string, email: string, password: string) {
   }
 }
 
+// Token storage in-memory (refresh token is httpOnly cookie)
+let ACCESS_TOKEN: string | null = null
+
+export function setAccessToken(token: string | null) {
+  ACCESS_TOKEN = token
+}
+
+export function getAccessToken() {
+  return ACCESS_TOKEN
+}
+
+export function clearTokens() {
+  ACCESS_TOKEN = null
+}
+
 // Login user
 export async function login(email: string, password: string) {
   try {
@@ -194,16 +209,8 @@ export async function login(email: string, password: string) {
       throw new Error(message)
     }
 
-    // persist tokens (if returned)
-    try {
-      if (data.access) {
-        localStorage.setItem("access_token", data.access)
-      }
-      if (data.refresh) {
-        localStorage.setItem("refresh_token", data.refresh)
-      }
-    } catch (e) {
-      console.warn("Could not persist tokens", e)
+    if (data.access) {
+      setAccessToken(data.access)
     }
 
     return data
@@ -213,32 +220,73 @@ export async function login(email: string, password: string) {
   }
 }
 
-// Helper: get stored access token
-export function getAccessToken() {
-  try {
-    return localStorage.getItem("access_token")
-  } catch (e) {
-    return null
-  }
-}
-
-export function clearTokens() {
-  try {
-    localStorage.removeItem("access_token")
-    localStorage.removeItem("refresh_token")
-  } catch (e) {
-    /* ignore */
-  }
-}
-
 // Wrapper for fetch that adds Authorization header when access token present
 export async function authFetch(input: RequestInfo, init?: RequestInit) {
-  const token = getAccessToken()
-  const headers = new Headers(init?.headers as HeadersInit || {})
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`)
+  const doFetch = async (accessToken?: string | null) => {
+    const headers = new Headers(init?.headers as HeadersInit || {})
+    if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`)
+    return fetch(input, { ...init, headers })
   }
 
-  const res = await fetch(input, { ...init, headers })
+  let token = getAccessToken()
+  let res = await doFetch(token)
+
+  if (res.status === 401) {
+    // try refresh via httpOnly cookie
+    try {
+      const rr = await fetch(`${API_BASE_URL}/auth/refresh/`, {
+        method: "POST",
+        credentials: "include",
+      })
+
+      if (rr.ok) {
+        const data = await rr.json().catch(() => ({}))
+        if (data.access) {
+          try { setAccessToken(data.access) } catch (e) {}
+          // retry original request with new token
+          res = await doFetch(data.access)
+          return res
+        }
+      } else {
+        // refresh failed -> clear tokens
+        clearTokens()
+      }
+    } catch (e) {
+      clearTokens()
+    }
+  }
+
   return res
+}
+
+export function logout() {
+  // call backend to blacklist refresh cookie and clear server cookie
+  try {
+    fetch(`${API_BASE_URL}/auth/logout/`, { method: 'POST', credentials: 'include' })
+  } catch (e) {
+    // ignore
+  }
+  clearTokens()
+}
+
+// Update user profile
+export async function updateProfile(payload: { full_name?: string; email?: string; phone?: string; country?: string }) {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/auth/update-profile/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const message = data.detail || data.message || 'Failed to update profile'
+      throw new Error(message)
+    }
+
+    return data
+  } catch (error) {
+    console.error('Error updating profile:', error)
+    throw error
+  }
 }
