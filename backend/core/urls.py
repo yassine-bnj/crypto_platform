@@ -7,4 +7,6 @@ urlpatterns = [
     path('ohlc/<str:symbol>/', views.ohlc_data, name='ohlc_data'),
     path('heatmap/', views.heatmap, name='heatmap'),
     path('indicators/<str:symbol>/', views.indicators, name='indicators'),
+    path('auth/register/', views.register, name='register'),
+    path('auth/login/', views.login_view, name='login'),
 ]

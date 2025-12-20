@@ -6,23 +6,53 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff } from "lucide-react"
+import { login } from "@/lib/api-service"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SignIn() {
   const router = useRouter()
+  const { toast } = useToast()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setError(null)
+    setEmailError(null)
+    setPasswordError(null)
 
-    // Simulate API call
-    setTimeout(() => {
-      router.push("/")
+    // client-side validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    let ok = true
+    if (!emailRegex.test(email)) {
+      setEmailError('Please enter a valid email address.')
+      ok = false
+    }
+    if (!password) {
+      setPasswordError('Please enter your password.')
+      ok = false
+    }
+    if (!ok) {
       setIsLoading(false)
-    }, 1000)
+      return
+    }
+    try {
+      await login(email, password)
+      toast({ title: "Signed in", description: "Welcome back" })
+      router.push("/")
+    } catch (err: any) {
+      const message = err?.message || "Failed to sign in"
+      toast({ title: "Sign in failed", description: message })
+      setError(message)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -39,17 +69,22 @@ export default function SignIn() {
         {/* Form Card */}
         <div className="bg-card border border-border/50 rounded-xl p-8 space-y-6">
           <form onSubmit={handleSignIn} className="space-y-4">
+            {error && <div className="p-3 bg-destructive/10 border border-destructive rounded-md text-destructive text-sm">{error}</div>}
             {/* Email */}
             <div className="space-y-2">
               <label className="text-sm font-semibold text-foreground block">Email Address</label>
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  setEmailError(null)
+                }}
                 placeholder="you@example.com"
                 className="w-full px-4 py-3 bg-secondary/50 border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all"
                 required
               />
+              {emailError && <p className="text-sm text-destructive mt-1">{emailError}</p>}
             </div>
 
             {/* Password */}
@@ -72,6 +107,7 @@ export default function SignIn() {
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
+              {passwordError && <p className="text-sm text-destructive mt-1">{passwordError}</p>}
             </div>
 
             {/* Remember Me & Forgot Password */}

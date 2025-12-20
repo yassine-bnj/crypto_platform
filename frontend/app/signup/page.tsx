@@ -6,9 +6,16 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff } from "lucide-react"
+import { register } from "@/lib/api-service"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SignUp() {
   const router = useRouter()
+  const { toast } = useToast()
+  const [error, setError] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [confirmError, setConfirmError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -23,22 +30,52 @@ export default function SignUp() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (formData.password !== formData.confirmPassword) {
-      alert("Passwords don't match")
-      return
-    }
-    setIsLoading(true)
+    setError(null)
+    setEmailError(null)
+    setPasswordError(null)
+    setConfirmError(null)
 
-    // Simulate API call
-    setTimeout(() => {
-      router.push("/")
+    // client-side validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    let ok = true
+    if (!emailRegex.test(formData.email)) {
+      setEmailError('Please enter a valid email address.')
+      ok = false
+    }
+    if (formData.password.length < 8) {
+      setPasswordError('Password must be at least 8 characters long.')
+      ok = false
+    } else if (!/[0-9]/.test(formData.password) || !/[A-Za-z]/.test(formData.password)) {
+      setPasswordError('Password must include letters and numbers.')
+      ok = false
+    }
+    if (formData.password !== formData.confirmPassword) {
+      setConfirmError('Passwords do not match.')
+      ok = false
+    }
+
+    if (!ok) return
+
+    setIsLoading(true)
+    try {
+      await register(formData.name, formData.email, formData.password)
+      toast({ title: "Account created", description: "You can now sign in" })
+      router.push("/signin")
+    } catch (err: any) {
+      const message = err?.message || "Failed to create account"
+      toast({ title: "Sign up failed", description: message })
+      setError(message)
+    } finally {
       setIsLoading(false)
-    }, 1000)
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+    if (name === 'email') setEmailError(null)
+    if (name === 'password') setPasswordError(null)
+    if (name === 'confirmPassword') setConfirmError(null)
   }
 
   return (
@@ -55,6 +92,7 @@ export default function SignUp() {
         {/* Form Card */}
         <div className="bg-card border border-border/50 rounded-xl p-8 space-y-6">
           <form onSubmit={handleSignUp} className="space-y-4">
+            {error && <div className="p-3 bg-destructive/10 border border-destructive rounded-md text-destructive text-sm">{error}</div>}
             {/* Name */}
             <div className="space-y-2">
               <label className="text-sm font-semibold text-foreground block">Full Name</label>
@@ -81,6 +119,7 @@ export default function SignUp() {
                 className="w-full px-4 py-3 bg-secondary/50 border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all"
                 required
               />
+              {emailError && <p className="text-sm text-destructive mt-1">{emailError}</p>}
             </div>
 
             {/* Password */}
@@ -104,6 +143,8 @@ export default function SignUp() {
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
+
+              {passwordError && <p className="text-sm text-destructive mt-1">{passwordError}</p>}
 
               {/* Password Strength */}
               {formData.password && (
@@ -145,6 +186,7 @@ export default function SignUp() {
                   {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
+              {confirmError && <p className="text-sm text-destructive mt-1">{confirmError}</p>}
             </div>
 
             {/* Terms */}

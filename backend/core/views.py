@@ -1,8 +1,11 @@
 # views.py
 from datetime import timedelta
 from django.utils.timezone import now
+from django.contrib.auth import get_user_model, authenticate
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Asset, PriceHistory
 from .serializers import PriceHistorySerializer
 
@@ -172,3 +175,53 @@ def indicators(request, symbol):
         "SMA_7": sma(values, 7),
         "SMA_25": sma(values, 25),
     })
+
+
+@api_view(['POST'])
+def register(request):
+    name = request.data.get('name')
+    email = request.data.get('email')
+    password = request.data.get('password')
+
+    if not name or not email or not password:
+        return Response({'detail': 'Missing fields'}, status=status.HTTP_400_BAD_REQUEST)
+
+    User = get_user_model()
+    if User.objects.filter(email=email).exists():
+        return Response({'detail': 'Email already in use'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # create a unique username based on email local-part
+    base_username = email.split('@')[0]
+    username = base_username
+    i = 1
+    while User.objects.filter(username=username).exists():
+        username = f"{base_username}{i}"
+        i += 1
+
+    user = User(username=username, email=email, first_name=name)
+    user.set_password(password)
+    user.save()
+
+    return Response({'detail': 'User created'}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+def login_view(request):
+    email = request.data.get('email')
+    password = request.data.get('password')
+
+    if not email or not password:
+        return Response({'detail': 'Missing credentials'}, status=status.HTTP_400_BAD_REQUEST)
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    user_auth = authenticate(username=user.username, password=password)
+    if not user_auth:
+        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    refresh = RefreshToken.for_user(user_auth)
+    return Response({'access': str(refresh.access_token), 'refresh': str(refresh)})

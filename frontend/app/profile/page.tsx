@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import Sidebar from "@/components/dashboard/sidebar"
 import { User, Shield, Bell, Zap, Camera } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -127,7 +128,10 @@ export default function ProfilePage() {
                     <CardTitle>Security</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <button className="w-full flex items-center justify-between p-4 bg-secondary/50 rounded-lg hover:bg-secondary transition-colors">
+                    <Link
+                      href="/profile/edit-password"
+                      className="w-full flex items-center justify-between p-4 bg-secondary/50 rounded-lg hover:bg-secondary transition-colors"
+                    >
                       <div className="flex items-center gap-3">
                         <Shield size={18} />
                         <div className="text-left">
@@ -136,7 +140,7 @@ export default function ProfilePage() {
                         </div>
                       </div>
                       <span className="text-muted-foreground">→</span>
-                    </button>
+                    </Link>
                     <button className="w-full flex items-center justify-between p-4 bg-secondary/50 rounded-lg hover:bg-secondary transition-colors">
                       <div className="flex items-center gap-3">
                         <Zap size={18} />

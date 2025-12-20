@@ -124,3 +124,121 @@ export function transformHeatmapData(data: Record<string, HeatmapItem>) {
     marketCap: item.market_cap,
   }))
 }
+
+// Change user password
+export async function changePassword(current_password: string, new_password: string) {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/auth/change-password/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ current_password, new_password }),
+    })
+
+    const data = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      const message = data.detail || data.message || "Failed to change password"
+      throw new Error(message)
+    }
+
+    return data
+  } catch (error) {
+    console.error("Error changing password:", error)
+    throw error
+  }
+}
+
+// Register new user
+export async function register(name: string, email: string, password: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/register/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, email, password }),
+    })
+
+    const data = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      const message = data.detail || data.message || "Failed to register"
+      throw new Error(message)
+    }
+
+    return data
+  } catch (error) {
+    console.error("Error registering user:", error)
+    throw error
+  }
+}
+
+// Login user
+export async function login(email: string, password: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/login/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    })
+
+    const data = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      const message = data.detail || data.message || "Failed to login"
+      throw new Error(message)
+    }
+
+    // persist tokens (if returned)
+    try {
+      if (data.access) {
+        localStorage.setItem("access_token", data.access)
+      }
+      if (data.refresh) {
+        localStorage.setItem("refresh_token", data.refresh)
+      }
+    } catch (e) {
+      console.warn("Could not persist tokens", e)
+    }
+
+    return data
+  } catch (error) {
+    console.error("Error logging in:", error)
+    throw error
+  }
+}
+
+// Helper: get stored access token
+export function getAccessToken() {
+  try {
+    return localStorage.getItem("access_token")
+  } catch (e) {
+    return null
+  }
+}
+
+export function clearTokens() {
+  try {
+    localStorage.removeItem("access_token")
+    localStorage.removeItem("refresh_token")
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+// Wrapper for fetch that adds Authorization header when access token present
+export async function authFetch(input: RequestInfo, init?: RequestInit) {
+  const token = getAccessToken()
+  const headers = new Headers(init?.headers as HeadersInit || {})
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`)
+  }
+
+  const res = await fetch(input, { ...init, headers })
+  return res
+}
