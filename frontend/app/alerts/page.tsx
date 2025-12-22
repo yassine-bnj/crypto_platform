@@ -73,6 +73,22 @@ export default function AlertsPage() {
     }
   }
 
+  const handleReactivate = async (id: number) => {
+    try {
+      const resp = await authFetch(`${API_BASE_URL}/alerts/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: true }),
+      })
+      if (!resp.ok) throw new Error('Reactivate failed')
+      const updated = await resp.json().catch(() => null)
+      setAlerts((prev) => prev.map((a) => (a.id === id ? (updated || { ...a, is_active: true }) : a)))
+      toast({ title: 'Alert reactivated' })
+    } catch (e) {
+      toast({ title: 'Error', description: 'Could not reactivate alert' })
+    }
+  }
+
   const markNotificationRead = async (id: number) => {
     try {
       const resp = await authFetch(`${API_BASE_URL}/notifications/${id}/read/`, { method: 'POST' })
@@ -137,6 +153,14 @@ export default function AlertsPage() {
                         >
                           {alert.is_active ? 'ACTIVE' : 'INACTIVE'}
                         </span>
+                        {!alert.is_active && (
+                          <button
+                            onClick={() => handleReactivate(alert.id)}
+                            className="px-3 py-1 bg-accent text-accent-foreground rounded hover:bg-accent/90 text-xs font-medium"
+                          >
+                            Reactivate
+                          </button>
+                        )}
                         <button onClick={() => handleDelete(alert.id)} className="p-2 text-destructive hover:bg-destructive/20 rounded transition-colors">
                           <Trash2 size={18} />
                         </button>

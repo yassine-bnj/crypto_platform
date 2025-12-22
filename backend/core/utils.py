@@ -1,16 +1,13 @@
 import logging
-
-from django.core.mail import send_mail
 from django.conf import settings
-
 
 logger = logging.getLogger(__name__)
 
 
 def send_notification_email(user, subject: str, message: str) -> bool:
-    """Send a simple notification email to a user.
+    """Send a simple notification email to a user via SendGrid API.
 
-    Returns True if send attempted (may still fail silently depending on backend), False if no recipient.
+    Returns True if sent successfully (status code 200/201/202), False otherwise.
     """
     recipient = getattr(user, "email", None)
     if not recipient:
@@ -18,20 +15,24 @@ def send_notification_email(user, subject: str, message: str) -> bool:
         return False
 
     try:
-        res = send_mail(
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+
+        sg = SendGridAPIClient(api_key=settings.SENDGRID_API_KEY)
+        email = Mail(
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to_emails=recipient,
             subject=subject,
-            message=message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@localhost"),
-            recipient_list=[recipient],
-            fail_silently=False,
+            plain_text_content=message,
         )
+        response = sg.send(email)
         logger.info(
-            "Notification email sent to %s; subject=%s; send_mail_result=%s",
+            "Notification email sent to %s; subject=%s; status_code=%s",
             recipient,
             subject,
-            res,
+            response.status_code,
         )
-        return True
+        return response.status_code in [200, 201, 202]
     except Exception:
         logger.exception("send_notification_email error for %s", recipient)
         return False
