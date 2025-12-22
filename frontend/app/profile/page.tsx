@@ -186,7 +186,7 @@ export default function ProfilePage() {
                 </Card>
 
                 {/* Notifications */}
-                <Card className="bg-card border border-border/50 rounded-xl">
+                {/* <Card className="bg-card border border-border/50 rounded-xl">
                   <CardHeader className="flex items-center gap-2">
                     <Bell size={20} className="text-accent" />
                     <CardTitle>Notifications</CardTitle>
@@ -209,7 +209,7 @@ export default function ProfilePage() {
                       </label>
                     ))}
                   </CardContent>
-                </Card>
+                </Card> */}
               </div>
             </div>
           </div>

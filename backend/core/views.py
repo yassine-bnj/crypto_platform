@@ -11,6 +11,10 @@ from rest_framework.decorators import permission_classes
 from .models import Asset, PriceHistory
 from .serializers import PriceHistorySerializer
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from .models import Alert, Notification
+from .serializers import AlertSerializer, NotificationSerializer
+from decimal import Decimal
+from django.shortcuts import get_object_or_404
 
 @api_view(['GET'])
 def price_history(request, symbol):
@@ -350,3 +354,74 @@ def update_profile(request):
 def me(request):
     user = request.user
     return Response({'id': user.id, 'email': user.email, 'name': user.first_name, 'phone': getattr(user, 'phone', None), 'country': getattr(user, 'country', None)})
+
+
+# Alerts API
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def alerts_list_create(request):
+    user = request.user
+    if request.method == 'GET':
+        alerts = Alert.objects.filter(user=user).select_related('asset')
+        return Response(AlertSerializer(alerts, many=True).data)
+
+    # POST -> create
+    data = request.data
+    currency = data.get('currency') or data.get('asset') or data.get('symbol')
+    price = data.get('price') or data.get('target_price')
+    condition = data.get('condition')
+
+    if not currency or not price or not condition:
+        return Response({'detail': 'Missing fields'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        asset = Asset.objects.get(symbol=currency.upper())
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        target_price = Decimal(str(price))
+    except Exception:
+        return Response({'detail': 'Invalid price'}, status=status.HTTP_400_BAD_REQUEST)
+
+    alert = Alert.objects.create(user=user, asset=asset, condition=condition, target_price=target_price)
+    return Response(AlertSerializer(alert).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def alert_detail(request, pk):
+    user = request.user
+    alert = get_object_or_404(Alert, pk=pk, user=user)
+
+    if request.method == 'DELETE':
+        alert.delete()
+        return Response({'detail': 'Alert deleted'}, status=status.HTTP_200_OK)
+
+    # PATCH: allow toggling active state
+    is_active = request.data.get('is_active')
+    if is_active is not None:
+        alert.is_active = bool(is_active)
+        alert.save()
+        return Response(AlertSerializer(alert).data)
+
+    return Response({'detail': 'No changes provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Notifications
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def notifications_list(request):
+    user = request.user
+    notes = Notification.objects.filter(user=user)
+    return Response(NotificationSerializer(notes, many=True).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def notification_mark_read(request, pk):
+    user = request.user
+    note = get_object_or_404(Notification, pk=pk, user=user)
+    note.read = True
+    note.save()
+    return Response(NotificationSerializer(note).data)

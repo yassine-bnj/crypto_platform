@@ -3,6 +3,10 @@ from celery import shared_task
 import requests
 from django.utils.dateparse import parse_datetime
 from .models import Asset, PriceHistory
+from .models import Alert, Notification
+from django.utils import timezone
+from django.conf import settings
+from .utils import send_notification_email
 
 @shared_task
 def test_task():
@@ -64,3 +68,43 @@ def fetch_crypto_prices():
             continue
 
     return f"{len(data)} actifs mis à jour avec historique."
+
+
+@shared_task
+def check_alerts():
+    """Check active alerts against the latest stored price and create notifications."""
+    alerts = Alert.objects.filter(is_active=True).select_related('asset', 'user')
+    count = 0
+    for alert in alerts:
+        # get latest price point for asset
+        latest = PriceHistory.objects.filter(asset=alert.asset).order_by('-timestamp').first()
+        if not latest:
+            continue
+
+        try:
+            current_price = float(latest.price_usd)
+        except Exception:
+            continue
+
+        triggered = False
+        if alert.condition == 'above' and current_price >= float(alert.target_price):
+            triggered = True
+        if alert.condition == 'below' and current_price <= float(alert.target_price):
+            triggered = True
+
+        if triggered:
+            # create notification and disable alert
+            msg = f"{alert.asset.name} ({alert.asset.symbol}) price is now ${current_price:.2f} — condition {alert.condition} {float(alert.target_price)} met."
+            Notification.objects.create(user=alert.user, message=msg)
+            # send email to user if email present (delegated to utils)
+            try:
+                send_notification_email(alert.user, f"Price alert: {alert.asset.symbol} {alert.condition}", msg)
+            except Exception as e:
+                # the utility handles logging; ensure task doesn't crash
+                print(f"Email utility raised for alert {alert.id}: {e}")
+            alert.is_active = False
+            alert.triggered_at = timezone.now()
+            alert.save()
+            count += 1
+
+    return f"Checked {alerts.count()} alerts, triggered {count}" 

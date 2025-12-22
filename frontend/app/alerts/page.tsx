@@ -3,16 +3,87 @@
 import Sidebar from "@/components/dashboard/sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Bell, Plus, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { authFetch, API_BASE_URL } from "@/lib/api-service"
+import { useToast } from "@/hooks/use-toast"
 import NewAlertModal from "@/components/alerts/new-alert-modal"
 
 export default function AlertsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const alerts = [
-    { id: 1, asset: "BTC", condition: "Price above $45,000", status: "active" },
-    { id: 2, asset: "ETH", condition: "Price below $2,000", status: "active" },
-    { id: 3, asset: "SOL", condition: "Volume above 3B", status: "inactive" },
-  ]
+  const [alerts, setAlerts] = useState<Array<any>>([])
+  const [loading, setLoading] = useState(false)
+  const [notifications, setNotifications] = useState<Array<any>>([])
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const { toast } = useToast()
+
+  const fetchAlerts = async () => {
+    setLoading(true)
+    try {
+      const resp = await authFetch(`${API_BASE_URL}/alerts/`)
+      if (!resp.ok) throw new Error('Failed to load alerts')
+      const data = await resp.json().catch(() => [])
+      setAlerts(data)
+    } catch (e) {
+      console.error('Error loading alerts', e)
+      toast({ title: 'Error', description: 'Could not load alerts' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchAlerts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // refetch when modal closes (new alert created)
+  useEffect(() => {
+    if (!isModalOpen) fetchAlerts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isModalOpen])
+
+  const fetchNotifications = async () => {
+    setLoadingNotifications(true)
+    try {
+      const resp = await authFetch(`${API_BASE_URL}/notifications/`)
+      if (!resp.ok) throw new Error('Failed to load notifications')
+      const data = await resp.json().catch(() => [])
+      setNotifications(data)
+    } catch (e) {
+      console.error('Error loading notifications', e)
+      toast({ title: 'Error', description: 'Could not load notifications' })
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchNotifications()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleDelete = async (id: number) => {
+    try {
+      const resp = await authFetch(`${API_BASE_URL}/alerts/${id}/`, { method: 'DELETE' })
+      if (!resp.ok) throw new Error('Delete failed')
+      setAlerts((prev) => prev.filter((a) => a.id !== id))
+      toast({ title: 'Alert deleted' })
+    } catch (e) {
+      toast({ title: 'Error', description: 'Could not delete alert' })
+    }
+  }
+
+  const markNotificationRead = async (id: number) => {
+    try {
+      const resp = await authFetch(`${API_BASE_URL}/notifications/${id}/read/`, { method: 'POST' })
+      if (!resp.ok) throw new Error('Mark read failed')
+      // update local state
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+      toast({ title: 'Marked read' })
+    } catch (e) {
+      toast({ title: 'Error', description: 'Could not mark notification' })
+    }
+  }
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -47,24 +118,26 @@ export default function AlertsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {alerts.map((alert) => (
+                  {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
+                  {!loading && alerts.length === 0 && <p className="text-sm text-muted-foreground">No alerts yet</p>}
+                  {alerts.map((alert: any) => (
                     <div
                       key={alert.id}
                       className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg hover:bg-secondary transition-colors"
                     >
                       <div>
-                        <p className="font-semibold">{alert.asset}</p>
-                        <p className="text-sm text-muted-foreground">{alert.condition}</p>
+                        <p className="font-semibold">{alert.asset_symbol || alert.asset?.symbol || alert.asset}</p>
+                        <p className="text-sm text-muted-foreground">{`${alert.condition === 'above' ? 'Price above' : 'Price below'} $${Number(alert.target_price).toFixed(2)}`}</p>
                       </div>
                       <div className="flex items-center gap-3">
                         <span
                           className={`text-xs font-semibold px-2 py-1 rounded ${
-                            alert.status === "active" ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"
+                            alert.is_active ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'
                           }`}
                         >
-                          {alert.status.toUpperCase()}
+                          {alert.is_active ? 'ACTIVE' : 'INACTIVE'}
                         </span>
-                        <button className="p-2 text-destructive hover:bg-destructive/20 rounded transition-colors">
+                        <button onClick={() => handleDelete(alert.id)} className="p-2 text-destructive hover:bg-destructive/20 rounded transition-colors">
                           <Trash2 size={18} />
                         </button>
                       </div>
@@ -73,6 +146,37 @@ export default function AlertsPage() {
                 </div>
               </CardContent>
             </Card>
+            <div className="mt-6">
+              <Card className="bg-card border border-border/50 rounded-xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Bell size={20} className="text-accent" />
+                    Notifications
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {loadingNotifications && <p className="text-sm text-muted-foreground">Loading...</p>}
+                    {!loadingNotifications && notifications.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No notifications</p>
+                    )}
+                    {notifications.map((note) => (
+                      <div key={note.id} className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
+                        <div>
+                          <p className="text-sm">{note.message}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(note.created_at).toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!note.read && (
+                            <button onClick={() => markNotificationRead(note.id)} className="px-3 py-1 bg-accent text-accent-foreground rounded">Mark read</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>

@@ -14,4 +14,9 @@ urlpatterns = [
     path('auth/change-password/', views.change_password, name='change_password'),
     path('auth/update-profile/', views.update_profile, name='update_profile'),
     path('auth/me/', views.me, name='me'),
+    # Alerts
+    path('alerts/', views.alerts_list_create, name='alerts_list_create'),
+    path('alerts/<int:pk>/', views.alert_detail, name='alert_detail'),
+    path('notifications/', views.notifications_list, name='notifications_list'),
+    path('notifications/<int:pk>/read/', views.notification_mark_read, name='notification_mark_read'),
 ]

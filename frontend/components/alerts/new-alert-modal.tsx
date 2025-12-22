@@ -3,6 +3,8 @@
 import type React from "react"
 
 import { useState } from "react"
+import { authFetch } from "@/lib/api-service"
+import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 
 interface NewAlertModalProps {
@@ -29,13 +31,30 @@ export default function NewAlertModal({ open, onOpenChange }: NewAlertModalProps
     price: "",
     condition: "above",
   })
+  const { toast } = useToast()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("[v0] Alert created:", formData)
-    // Reset form and close modal
-    setFormData({ currency: "BTC", price: "", condition: "above" })
-    onOpenChange(false)
+    ;(async () => {
+      try {
+        const resp = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/alerts/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currency: formData.currency, price: formData.price, condition: formData.condition }),
+        })
+
+        if (!resp.ok) {
+          const json = await resp.json().catch(() => ({}))
+          throw new Error(json.detail || 'Failed to create alert')
+        }
+
+        toast({ title: 'Alert created', description: 'Your price alert has been created.' })
+        setFormData({ currency: 'BTC', price: '', condition: 'above' })
+        onOpenChange(false)
+      } catch (err: any) {
+        toast({ title: 'Error', description: err?.message || 'Could not create alert', action: undefined })
+      }
+    })()
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
