@@ -1,8 +1,11 @@
 "use client"
 
-import { Search, Bell, User, Menu, X, Moon, Sun } from "lucide-react"
+import { Search, Bell, User, Menu, X, Moon, Sun, ChevronDown, Check } from "lucide-react"
 import Link from "next/link"
 import { useTheme } from "@/components/theme-provider"
+import { useState, useEffect } from "react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface HeaderProps {
   timeRange: string
@@ -22,8 +25,29 @@ export default function Header({
   sidebarOpen,
 }: HeaderProps) {
   const timeRanges = ["1h", "4h", "24h", "7d", "1M", "1Y"]
-  const cryptoAssets = ["BTC", "ETH", "XRP", "SOL", "ADA", "DOGE"]
+  const [cryptoAssets, setCryptoAssets] = useState<string[]>([])
+  const [assetsDropdownOpen, setAssetsDropdownOpen] = useState(false)
   const { theme, toggleTheme } = useTheme()
+
+  // Fetch available assets from API
+  useEffect(() => {
+    const fetchAssets = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/assets/')
+        if (response.ok) {
+          const data = await response.json()
+          console.log('Fetched assets:', data)
+          const symbols = data.map((asset: any) => asset.symbol)
+          setCryptoAssets(symbols)
+        }
+      } catch (error) {
+        console.error('Failed to fetch assets:', error)
+        // Fallback to default assets if API fails
+        setCryptoAssets(["BTC", "ETH", "XRP", "SOL", "ADA", "DOGE"])
+      }
+    }
+    fetchAssets()
+  }, [])
 
   const toggleAsset = (asset: string) => {
     onAssetsChange(
@@ -96,24 +120,61 @@ export default function Header({
           </div>
         </div>
 
-        {/* Asset Selection */}
+        {/* Asset Selection - Multi-select Dropdown */}
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Assets:</span>
-          <div className="flex gap-1">
-            {cryptoAssets.map((asset) => (
-              <button
-                key={asset}
-                onClick={() => toggleAsset(asset)}
-                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                  selectedAssets.includes(asset)
-                    ? "bg-accent text-accent-foreground"
-                    : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                {asset}
+          <Popover open={assetsDropdownOpen} onOpenChange={setAssetsDropdownOpen}>
+            <PopoverTrigger asChild>
+              <button className="flex items-center gap-2 px-4 py-2 bg-secondary/50 border border-border rounded-lg text-sm hover:bg-secondary transition-colors min-w-[200px] justify-between">
+                <span className="text-foreground font-medium">
+                  {selectedAssets.length > 0 
+                    ? `${selectedAssets.length} selected: ${selectedAssets.join(", ")}` 
+                    : "Select assets..."}
+                </span>
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
               </button>
-            ))}
-          </div>
+            </PopoverTrigger>
+            <PopoverContent className="w-[280px] p-0" align="start">
+              <div className="p-3 border-b border-border">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Select Cryptocurrencies
+                </div>
+              </div>
+              <div className="max-h-[400px] overflow-y-auto p-3">
+                <div className="space-y-2">
+                  {cryptoAssets.length > 0 ? (
+                    cryptoAssets.map((asset) => (
+                      <div
+                        key={asset}
+                        className="flex items-center space-x-3 p-2 rounded-md hover:bg-secondary/50 cursor-pointer transition-colors"
+                        onClick={() => toggleAsset(asset)}
+                      >
+                        <Checkbox
+                          id={asset}
+                          checked={selectedAssets.includes(asset)}
+                          onCheckedChange={() => toggleAsset(asset)}
+                          className="border-muted-foreground"
+                        />
+                        <label
+                          htmlFor={asset}
+                          className="text-sm font-medium cursor-pointer flex-1"
+                        >
+                          {asset}
+                        </label>
+                        {selectedAssets.includes(asset) && (
+                          <Check className="w-4 h-4 text-accent" />
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground text-center py-4">
+                      Loading assets...
+                    </div>
+                  )}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </div>

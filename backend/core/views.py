@@ -425,3 +425,35 @@ def notification_mark_read(request, pk):
     note.read = True
     note.save()
     return Response(NotificationSerializer(note).data)
+
+
+@api_view(['GET'])
+def assets_list(request):
+    """
+    Return list of available crypto assets ordered by popularity/market cap
+    """
+    assets = Asset.objects.all().order_by('id')  # Or order by market_cap if field exists
+    data = [
+        {
+            'symbol': asset.symbol.upper(),
+            'name': asset.name,
+        }
+        for asset in assets
+    ]
+    return Response(data)
+
+
+@api_view(['GET'])
+def assets_list(request):
+    """
+    Return list of available crypto assets ordered by popularity/market cap
+    """
+    assets = Asset.objects.all().order_by('id')  # Or order by market_cap if field exists
+    data = [
+        {
+            'symbol': asset.symbol.upper(),
+            'name': asset.name,
+        }
+        for asset in assets
+    ]
+    return Response(data)
