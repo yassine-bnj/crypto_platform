@@ -12,7 +12,9 @@ interface HeatmapData {
 
 export default function HeatmapSection({ selectedAssets }: { selectedAssets: string[] }) {
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([])
+  const [allHeatmapData, setAllHeatmapData] = useState<HeatmapData[]>([])
   const [loading, setLoading] = useState(true)
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     const fetchHeatmap = async () => {
@@ -20,14 +22,23 @@ export default function HeatmapSection({ selectedAssets }: { selectedAssets: str
       const data = await getHeatmapData("24h")
       if (data) {
         const transformed = transformHeatmapData(data)
-        const filtered = transformed.slice(0, 12)
-        setHeatmapData(filtered)
+        setAllHeatmapData(transformed)
+        setHeatmapData(transformed.slice(0, 12))
       }
       setLoading(false)
     }
 
     fetchHeatmap()
   }, [])
+
+  const toggleShowAll = () => {
+    if (showAll) {
+      setHeatmapData(allHeatmapData.slice(0, 12))
+    } else {
+      setHeatmapData(allHeatmapData)
+    }
+    setShowAll(!showAll)
+  }
 
   const getHeatmapColor = (change: number): string => {
     if (change >= 10) return "bg-chart-2/90"
@@ -74,6 +85,16 @@ export default function HeatmapSection({ selectedAssets }: { selectedAssets: str
               </div>
             ))}
           </div>
+          {allHeatmapData.length > 12 && (
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={toggleShowAll}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+              >
+                {showAll ? "Show less" : `Show more (${allHeatmapData.length - 12} more)`}
+              </button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
