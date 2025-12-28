@@ -33,7 +33,7 @@ export default function PortfolioSection() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [fundAmount, setFundAmount] = useState("1000")
-  const [tradeForm, setTradeForm] = useState({ symbol: "", side: "buy", quantity: "", price: "" })
+  const [tradeForm, setTradeForm] = useState({ symbol: "", side: "buy", quantity: "" })
   const [submittingTrade, setSubmittingTrade] = useState(false)
   const [funding, setFunding] = useState(false)
   const [tradeAmount, setTradeAmount] = useState<number | null>(null)
@@ -75,25 +75,20 @@ export default function PortfolioSection() {
   // Calculate trade amount in real-time
   useEffect(() => {
     const quantity = Number.parseFloat(tradeForm.quantity)
-    const price = tradeForm.price ? Number.parseFloat(tradeForm.price) : undefined
 
     if (!isNaN(quantity) && quantity > 0) {
-      if (price && !isNaN(price) && price > 0) {
-        setTradeAmount(quantity * price)
+      // Find the current price from portfolio holdings or fetched prices
+      const currentAsset = portfolio?.holdings.find((h) => h.symbol === tradeForm.symbol)
+      const livePrice = currentAsset?.latest_price ?? assetPrices[tradeForm.symbol]
+      if (livePrice) {
+        setTradeAmount(quantity * livePrice)
       } else {
-        // Find the current price from portfolio holdings or fetched prices
-        const currentAsset = portfolio?.holdings.find((h) => h.symbol === tradeForm.symbol)
-        const livePrice = currentAsset?.latest_price ?? assetPrices[tradeForm.symbol]
-        if (livePrice) {
-          setTradeAmount(quantity * livePrice)
-        } else {
-          setTradeAmount(null)
-        }
+        setTradeAmount(null)
       }
     } else {
       setTradeAmount(null)
     }
-  }, [tradeForm.symbol, tradeForm.side, tradeForm.quantity, tradeForm.price, portfolio, assetPrices])
+  }, [tradeForm.symbol, tradeForm.side, tradeForm.quantity, portfolio, assetPrices])
 
   // Fetch latest price when asset changes and not already known
   useEffect(() => {
@@ -123,18 +118,16 @@ export default function PortfolioSection() {
     setSubmittingTrade(true)
     try {
       const quantity = Number.parseFloat(tradeForm.quantity)
-      const price = tradeForm.price ? Number.parseFloat(tradeForm.price) : undefined
       const result = await placeVirtualTrade({
         symbol: tradeForm.symbol,
         side: tradeForm.side as "buy" | "sell",
         quantity,
-        price,
       })
       setPortfolio(result.portfolio)
       setTrades((prev) => [result.trade, ...prev])
       setFundingHistory((prev) => prev) // Keep existing, reload on next refresh
       toast({ title: "Simulated trade executed" })
-      setTradeForm((prev) => ({ ...prev, quantity: "", price: "" }))
+      setTradeForm((prev) => ({ ...prev, quantity: "" }))
     } catch (error: any) {
       toast({ title: "Trade failed", description: error?.message ?? "Unable to place trade", variant: "destructive" })
     } finally {
@@ -342,19 +335,6 @@ export default function PortfolioSection() {
                   className="bg-input"
                 />
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground" htmlFor="price">Price (optional)</label>
-              <Input
-                id="price"
-                type="number"
-                min="0"
-                value={tradeForm.price}
-                onChange={(e) => setTradeForm((prev) => ({ ...prev, price: e.target.value }))}
-                className="bg-input"
-                placeholder="Use latest price when empty"
-              />
             </div>
 
             {tradeAmount !== null && (
