@@ -1,4 +1,5 @@
 # models.py
+from decimal import Decimal
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
@@ -79,3 +80,68 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification({self.user}, read={self.read})"
+
+
+# ====== Virtual Portfolio (paper trading) ======
+class VirtualPortfolio(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='virtual_portfolio')
+    initial_balance = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal("100000.00"))
+    cash_balance = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal("100000.00"))
+    realized_pnl = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal("0"))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Paper portfolio for {self.user}"  # simple admin label
+
+
+class VirtualHolding(models.Model):
+    portfolio = models.ForeignKey(VirtualPortfolio, on_delete=models.CASCADE, related_name='holdings')
+    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='virtual_holdings')
+    quantity = models.DecimalField(max_digits=30, decimal_places=10, default=Decimal("0"))
+    avg_price = models.DecimalField(max_digits=25, decimal_places=8, default=Decimal("0"))
+
+    class Meta:
+        unique_together = ('portfolio', 'asset')
+
+    def __str__(self):
+        return f"{self.asset.symbol} ({self.quantity})"
+
+
+class VirtualTrade(models.Model):
+    SIDE_CHOICES = [
+        ("buy", "Buy"),
+        ("sell", "Sell"),
+    ]
+
+    portfolio = models.ForeignKey(VirtualPortfolio, on_delete=models.CASCADE, related_name='trades')
+    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='virtual_trades')
+    side = models.CharField(max_length=4, choices=SIDE_CHOICES)
+    quantity = models.DecimalField(max_digits=30, decimal_places=10)
+    price_usd = models.DecimalField(max_digits=25, decimal_places=8)
+    total_usd = models.DecimalField(max_digits=25, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.side.upper()} {self.quantity} {self.asset.symbol}"
+
+
+class VirtualFundingTransaction(models.Model):
+    DIRECTION_CHOICES = [
+        ("deposit", "Deposit"),
+        ("withdraw", "Withdraw"),
+    ]
+
+    portfolio = models.ForeignKey(VirtualPortfolio, on_delete=models.CASCADE, related_name='funding_transactions')
+    direction = models.CharField(max_length=8, choices=DIRECTION_CHOICES)
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.direction.upper()} {self.amount}"

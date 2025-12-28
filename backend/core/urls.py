@@ -20,4 +20,10 @@ urlpatterns = [
     path('alerts/<int:pk>/', views.alert_detail, name='alert_detail'),
     path('notifications/', views.notifications_list, name='notifications_list'),
     path('notifications/<int:pk>/read/', views.notification_mark_read, name='notification_mark_read'),
+    # Virtual portfolio (paper trading)
+    path('virtual-portfolio/', views.virtual_portfolio_summary, name='virtual_portfolio_summary'),
+    path('virtual-portfolio/trades/', views.virtual_portfolio_trades, name='virtual_portfolio_trades'),
+    path('virtual-portfolio/fund/', views.virtual_portfolio_fund, name='virtual_portfolio_fund'),
+    path('virtual-portfolio/funding-history/', views.virtual_portfolio_funding_history, name='virtual_portfolio_funding_history'),
+    path('assets/<str:symbol>/price/', views.asset_current_price, name='asset_current_price'),
 ]

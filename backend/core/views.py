@@ -8,13 +8,14 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes
-from .models import Asset, PriceHistory
+from .models import Asset, PriceHistory, VirtualPortfolio, VirtualHolding, VirtualTrade, VirtualFundingTransaction
 from .serializers import PriceHistorySerializer
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from .models import Alert, Notification
-from .serializers import AlertSerializer, NotificationSerializer
+from .serializers import AlertSerializer, NotificationSerializer, VirtualPortfolioSerializer, VirtualTradeSerializer, VirtualFundingTransactionSerializer
 from decimal import Decimal
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 
 @api_view(['GET'])
 def price_history(request, symbol):
@@ -443,17 +444,244 @@ def assets_list(request):
     return Response(data)
 
 
+# ====== Virtual portfolio (paper trading) ======
+
+def _get_or_create_virtual_portfolio(user):
+    portfolio, _ = VirtualPortfolio.objects.get_or_create(
+        user=user,
+        defaults={
+            'initial_balance': Decimal('100000.00'),
+            'cash_balance': Decimal('100000.00'),
+        },
+    )
+    return portfolio
+
+
+def _latest_price(asset):
+    last_price = PriceHistory.objects.filter(asset=asset).order_by('-timestamp').first()
+    return Decimal(last_price.price_usd) if last_price else None
+
+
+def _portfolio_payload(portfolio: VirtualPortfolio):
+    holdings = list(VirtualHolding.objects.filter(portfolio=portfolio).select_related('asset'))
+    price_cache = {}
+    for holding in holdings:
+        if holding.asset_id not in price_cache:
+            price_cache[holding.asset_id] = _latest_price(holding.asset)
+
+    portfolio._prefetched_objects_cache = {'holdings': holdings}
+    serializer = VirtualPortfolioSerializer(
+        portfolio,
+        context={'price_cache': price_cache, 'holdings': holdings},
+    )
+    return serializer.data
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def virtual_portfolio_summary(request):
+    portfolio = _get_or_create_virtual_portfolio(request.user)
+    return Response(_portfolio_payload(portfolio))
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def virtual_portfolio_trades(request):
+    portfolio = _get_or_create_virtual_portfolio(request.user)
+
+    if request.method == 'GET':
+        trades = VirtualTrade.objects.filter(portfolio=portfolio).select_related('asset')
+        return Response(VirtualTradeSerializer(trades, many=True).data)
+
+    # POST => place simulated trade
+    side = (request.data.get('side') or '').lower()
+    symbol = request.data.get('symbol') or request.data.get('asset')
+    quantity_raw = request.data.get('quantity')
+    price_raw = request.data.get('price')
+
+    if side not in ['buy', 'sell']:
+        return Response({'detail': 'Invalid side, must be buy or sell'}, status=status.HTTP_400_BAD_REQUEST)
+    if not symbol or quantity_raw is None:
+        return Response({'detail': 'symbol and quantity are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        quantity = Decimal(str(quantity_raw))
+    except Exception:
+        return Response({'detail': 'Invalid quantity'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if quantity <= 0:
+        return Response({'detail': 'Quantity must be positive'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        asset = Asset.objects.get(symbol=symbol.upper())
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    price = None
+    if price_raw is not None:
+        try:
+            price = Decimal(str(price_raw))
+        except Exception:
+            return Response({'detail': 'Invalid price'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        price = _latest_price(asset)
+
+    if price is None:
+        return Response({'detail': 'No price available for this asset'}, status=status.HTTP_400_BAD_REQUEST)
+
+    total = (price * quantity).quantize(Decimal('0.01'))
+
+    with transaction.atomic():
+        portfolio = VirtualPortfolio.objects.select_for_update().get(pk=portfolio.pk)
+
+        if side == 'buy':
+            if portfolio.cash_balance < total:
+                return Response({'detail': 'Insufficient virtual cash'}, status=status.HTTP_400_BAD_REQUEST)
+
+            holding, _ = VirtualHolding.objects.select_for_update().get_or_create(
+                portfolio=portfolio,
+                asset=asset,
+                defaults={'quantity': Decimal('0'), 'avg_price': price},
+            )
+
+            new_qty = holding.quantity + quantity
+            # Calculate new average price using exact price, not rounded total
+            new_avg = ((holding.quantity * holding.avg_price) + (price * quantity)) / new_qty
+            holding.quantity = new_qty
+            holding.avg_price = new_avg.quantize(Decimal('0.00000001'))
+            holding.save()
+
+            portfolio.cash_balance = (portfolio.cash_balance - total).quantize(Decimal('0.01'))
+            portfolio.save()
+
+        else:  # sell
+            try:
+                holding = VirtualHolding.objects.select_for_update().get(portfolio=portfolio, asset=asset)
+            except VirtualHolding.DoesNotExist:
+                return Response({'detail': 'Nothing to sell for this asset'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if holding.quantity < quantity:
+                return Response({'detail': 'Sell quantity exceeds holding'}, status=status.HTTP_400_BAD_REQUEST)
+
+            new_qty = holding.quantity - quantity
+            # Calculate realized profit using exact price
+            realized = (price - holding.avg_price) * quantity
+
+            portfolio.cash_balance = (portfolio.cash_balance + total).quantize(Decimal('0.01'))
+            portfolio.realized_pnl = (portfolio.realized_pnl + realized).quantize(Decimal('0.01'))
+
+            if new_qty == 0:
+                holding.delete()
+            else:
+                holding.quantity = new_qty
+                holding.save()
+
+            portfolio.save()
+
+        trade = VirtualTrade.objects.create(
+            portfolio=portfolio,
+            asset=asset,
+            side=side,
+            quantity=quantity,
+            price_usd=price,
+            total_usd=total,
+        )
+
+    refreshed = VirtualPortfolio.objects.get(pk=portfolio.pk)
+    payload = {
+        'trade': VirtualTradeSerializer(trade).data,
+        'portfolio': _portfolio_payload(refreshed),
+    }
+    return Response(payload, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def virtual_portfolio_fund(request):
+    portfolio = _get_or_create_virtual_portfolio(request.user)
+    direction = (request.data.get('direction') or 'deposit').lower()
+    amount_raw = request.data.get('amount')
+
+    if amount_raw is None:
+        return Response({'detail': 'amount is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        amount = Decimal(str(amount_raw))
+    except Exception:
+        return Response({'detail': 'Invalid amount'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if amount <= 0:
+        return Response({'detail': 'Amount must be positive'}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        portfolio = VirtualPortfolio.objects.select_for_update().get(pk=portfolio.pk)
+
+        if direction == 'deposit':
+            portfolio.cash_balance = (portfolio.cash_balance + amount).quantize(Decimal('0.01'))
+            portfolio.initial_balance = (portfolio.initial_balance + amount).quantize(Decimal('0.01'))
+        elif direction == 'withdraw':
+            if amount > portfolio.cash_balance:
+                return Response({'detail': 'Insufficient virtual cash'}, status=status.HTTP_400_BAD_REQUEST)
+            portfolio.cash_balance = (portfolio.cash_balance - amount).quantize(Decimal('0.01'))
+            portfolio.initial_balance = (portfolio.initial_balance - amount).quantize(Decimal('0.01'))
+            if portfolio.initial_balance < 0:
+                portfolio.initial_balance = Decimal('0.00')
+        else:
+            return Response({'detail': 'Invalid direction, use deposit or withdraw'}, status=status.HTTP_400_BAD_REQUEST)
+
+        portfolio.save()
+
+        # Create funding transaction record
+        VirtualFundingTransaction.objects.create(
+            portfolio=portfolio,
+            direction=direction,
+            amount=amount,
+        )
+
+    refreshed = VirtualPortfolio.objects.get(pk=portfolio.pk)
+    return Response({'portfolio': _portfolio_payload(refreshed)})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def virtual_portfolio_funding_history(request):
+    portfolio = _get_or_create_virtual_portfolio(request.user)
+    transactions = VirtualFundingTransaction.objects.filter(portfolio=portfolio)
+    return Response(VirtualFundingTransactionSerializer(transactions, many=True).data)
+
+
 @api_view(['GET'])
 def assets_list(request):
     """
     Return list of available crypto assets ordered by popularity/market cap
     """
-    assets = Asset.objects.all().order_by('id')  # Or order by market_cap if field exists
+    assets = Asset.objects.all().order_by('id')
     data = [
         {
+            'id': asset.id,
             'symbol': asset.symbol.upper(),
             'name': asset.name,
         }
         for asset in assets
     ]
     return Response(data)
+
+
+@api_view(['GET'])
+def asset_current_price(request, symbol):
+    """Return the latest known price for a given asset symbol."""
+    try:
+        asset = Asset.objects.get(symbol=symbol.upper())
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    price_obj = PriceHistory.objects.filter(asset=asset).order_by('-timestamp').first()
+    if not price_obj:
+        return Response({'detail': 'No price data available'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response({
+        'symbol': asset.symbol.upper(),
+        'name': asset.name,
+        'price': float(price_obj.price_usd),
+        'timestamp': price_obj.timestamp.isoformat(),
+    })
