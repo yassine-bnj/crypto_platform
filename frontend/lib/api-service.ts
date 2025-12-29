@@ -264,6 +264,8 @@ export async function login(email: string, password: string) {
 
     if (data.access) {
       setAccessToken(data.access)
+      // Set cookie for middleware access
+      document.cookie = `access_token=${data.access}; path=/; max-age=3600; SameSite=Lax`
     }
 
     return data
@@ -320,6 +322,9 @@ export function logout() {
     // ignore
   }
   clearTokens()
+  // Clear access token cookie - use multiple methods to ensure removal
+  document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax'
+  document.cookie = 'access_token=; path=/; max-age=-1'
 }
 
 // Update user profile

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@/context/auth"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import AdminSidebar from "@/components/admin/admin-sidebar"
 import { Trash2, Edit2, Search } from "lucide-react"
@@ -58,8 +60,20 @@ const mockUsers: User[] = [
 ]
 
 export default function UsersManagement() {
+  const { isAuthenticated } = useAuth()
+  const router = useRouter()
   const [users, setUsers] = useState<User[]>(mockUsers)
   const [searchTerm, setSearchTerm] = useState("")
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push("/admin/login")
+    }
+  }, [isAuthenticated, router])
+
+  if (!isAuthenticated) {
+    return null
+  }
 
   const filteredUsers = users.filter(
     (user) =>

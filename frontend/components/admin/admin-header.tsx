@@ -1,6 +1,6 @@
 "use client"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useAuth } from "@/context/auth"
 import { Menu, X, LogOut, Moon, Sun } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
 
@@ -10,16 +10,13 @@ interface AdminHeaderProps {
 }
 
 export default function AdminHeader({ sidebarOpen, setSidebarOpen }: AdminHeaderProps) {
-  const router = useRouter()
+  const { logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [isLogoutLoading, setIsLogoutLoading] = useState(false)
 
   const handleAdminLogout = async () => {
     setIsLogoutLoading(true)
-    // Clear admin session
-    localStorage.removeItem("adminSession")
-    // Redirect to admin login
-    router.push("/admin/login")
+    logout()
   }
 
   return (

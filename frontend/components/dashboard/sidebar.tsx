@@ -3,16 +3,18 @@
 import type React from "react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
+import { useAuth } from "@/context/auth"
 import { BarChart3, Wallet, Zap, Settings, Home, LogOut, User, Shield } from "lucide-react"
 
 export default function Sidebar() {
   const router = useRouter()
   const pathname = usePathname()
+  const { logout } = useAuth()
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + "/")
 
   const handleLogout = () => {
-    router.push("/signin")
+    logout()
   }
 
   return (

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@/context/auth"
+import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import AdminSidebar from "@/components/admin/admin-sidebar"
@@ -22,8 +24,20 @@ const defaultConfigs: APIConfig[] = [
 ]
 
 export default function APIConfig() {
+  const { isAuthenticated } = useAuth()
+  const router = useRouter()
   const [configs, setConfigs] = useState<APIConfig[]>(defaultConfigs)
   const [changes, setChanges] = useState(false)
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push("/admin/login")
+    }
+  }, [isAuthenticated, router])
+
+  if (!isAuthenticated) {
+    return null
+  }
 
   const handleFrequencyChange = (index: number, frequency: number) => {
     const newConfigs = [...configs]

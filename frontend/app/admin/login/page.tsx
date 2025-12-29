@@ -5,9 +5,13 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Shield } from "lucide-react"
+import { useAuth } from "@/context/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export default function AdminLogin() {
   const router = useRouter()
+  const { login } = useAuth()
+  const { toast } = useToast()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -20,35 +24,18 @@ export default function AdminLogin() {
     setIsLoading(true)
 
     try {
-      // Simulate API call to verify admin credentials
-      // In production, this would call your backend API
-      const hardcodedAdmins = [
-        { email: "admin@cryptotrack.com", password: "admin123" },
-        { email: "superadmin@cryptotrack.com", password: "superadmin123" },
-      ]
-
-      const adminUser = hardcodedAdmins.find((admin) => admin.email === email && admin.password === password)
-
-      if (!adminUser) {
-        setError("Invalid admin credentials")
-        setIsLoading(false)
-        return
-      }
-
-      // Store admin session in localStorage (in production, use secure HTTP-only cookies)
-      const adminSession = {
-        email,
-        role: "admin",
-        loginTime: new Date().toISOString(),
-      }
-      localStorage.setItem("adminSession", JSON.stringify(adminSession))
-
-      // Redirect to admin dashboard
-      setTimeout(() => {
-        router.push("/admin")
-      }, 500)
-    } catch (err) {
-      setError("An error occurred during login")
+      console.log('[AdminLogin] Attempting login:', email)
+      await login(email, password)
+      console.log('[AdminLogin] Login successful, redirecting...')
+      toast({ title: "Admin logged in", description: "Welcome to admin panel" })
+      router.push("/admin")
+      console.log('[AdminLogin] Redirect initiated')
+    } catch (err: any) {
+      const message = err?.message || "Invalid admin credentials"
+      console.error('[AdminLogin] Error:', message)
+      setError(message)
+      toast({ title: "Login failed", description: message, variant: "destructive" })
+    } finally {
       setIsLoading(false)
     }
   }
@@ -136,7 +123,7 @@ export default function AdminLogin() {
               <strong>Email:</strong> admin@cryptotrack.com
             </p>
             <p className="text-muted-foreground">
-              <strong>Password:</strong> admin123
+              <strong>Password:</strong> (Use your chosen password)
             </p>
           </div>
         </div>

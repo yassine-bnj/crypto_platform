@@ -2,6 +2,9 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import AdminSidebar from "@/components/admin/admin-sidebar"
+import { useAuth } from "@/context/auth"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { BarChart3, Users, Server, AlertCircle } from "lucide-react"
 import {
   LineChart,
@@ -43,6 +46,19 @@ const apiUsageData = [
 ]
 
 export default function AdminDashboard() {
+  const { isAuthenticated } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push("/admin/login")
+    }
+  }, [isAuthenticated, router])
+
+  if (!isAuthenticated) {
+    return null
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <AdminSidebar />

@@ -1,5 +1,8 @@
 "use client"
 
+import { useEffect } from "react"
+import { useAuth } from "@/context/auth"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import AdminSidebar from "@/components/admin/admin-sidebar"
 import { AlertCircle, CheckCircle } from "lucide-react"
@@ -32,6 +35,19 @@ const systemLogs = [
 ]
 
 export default function SystemMonitoring() {
+  const { isAuthenticated } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push("/admin/login")
+    }
+  }, [isAuthenticated, router])
+
+  if (!isAuthenticated) {
+    return null
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "normal":
