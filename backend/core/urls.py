@@ -10,6 +10,7 @@ urlpatterns = [
     path('indicators/<str:symbol>/', views.indicators, name='indicators'),
     path('auth/register/', views.register, name='register'),
     path('auth/login/', views.login_view, name='login'),
+    path('auth/admin-login/', views.admin_login_view, name='admin_login'),
     path('auth/refresh/', views.refresh_token, name='token_refresh'),
     path('auth/logout/', views.logout_view, name='logout'),
     path('auth/change-password/', views.change_password, name='change_password'),
@@ -26,4 +27,7 @@ urlpatterns = [
     path('virtual-portfolio/fund/', views.virtual_portfolio_fund, name='virtual_portfolio_fund'),
     path('virtual-portfolio/funding-history/', views.virtual_portfolio_funding_history, name='virtual_portfolio_funding_history'),
     path('assets/<str:symbol>/price/', views.asset_current_price, name='asset_current_price'),
+    # Admin users management
+    path('admin/users/', views.users_list, name='users_list'),
+    path('admin/users/<int:user_id>/status/', views.user_update_status, name='user_update_status'),
 ]

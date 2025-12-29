@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useAuth } from "@/context/auth"
+import { useRouter } from "next/navigation"
 import Sidebar from "@/components/dashboard/sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -10,6 +12,8 @@ import { useToast } from "@/hooks/use-toast"
 import { getAssetPrice, getAssets, placeVirtualTrade, AssetItem } from "@/lib/api-service"
 
 export default function MarketsPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const router = useRouter()
   const { toast } = useToast()
   const [assets, setAssets] = useState<AssetItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -24,6 +28,12 @@ export default function MarketsPage() {
 
   const totalPages = Math.max(1, Math.ceil(assets.length / pageSize))
   const currentAssets = assets.slice((page - 1) * pageSize, page * pageSize)
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/signin")
+    }
+  }, [isAuthenticated, authLoading, router])
 
   useEffect(() => {
     const loadAssets = async () => {
@@ -122,6 +132,10 @@ export default function MarketsPage() {
       })
     })
   }, [currentAssets, assetPrices])
+
+  if (authLoading || !isAuthenticated) {
+    return null
+  }
 
   return (
     <div className="flex h-screen bg-background text-foreground">

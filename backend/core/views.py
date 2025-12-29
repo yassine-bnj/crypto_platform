@@ -245,6 +245,47 @@ def login_view(request):
         secure=False,
         samesite='Lax',
         path='/',
+        max_age=86400,  # 24 hours
+    )
+    return response
+
+
+@api_view(['POST'])
+def admin_login_view(request):
+    email = request.data.get('email')
+    password = request.data.get('password')
+
+    if not email or not password:
+        return Response({'detail': 'Missing credentials'}, status=status.HTTP_400_BAD_REQUEST)
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    # Check if user is staff or superuser
+    if not (user.is_staff or user.is_superuser):
+        return Response({'detail': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+
+    user_auth = authenticate(username=user.username, password=password)
+    if not user_auth:
+        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    refresh = RefreshToken.for_user(user_auth)
+    access = str(refresh.access_token)
+    refresh_token = str(refresh)
+
+    response = Response({'access': access})
+    # set httpOnly refresh cookie
+    response.set_cookie(
+        'refresh_token',
+        refresh_token,
+        httponly=True,
+        secure=False,
+        samesite='Lax',
+        path='/',
+        max_age=86400,  # 24 hours
     )
     return response
 
@@ -252,17 +293,37 @@ def login_view(request):
 @api_view(['POST'])
 def refresh_token(request):
     # Read refresh token from cookie (httpOnly) or body fallback
-    refresh_token = request.COOKIES.get('refresh_token') or request.data.get('refresh')
-    if not refresh_token:
+    refresh_token_str = request.COOKIES.get('refresh_token') or request.data.get('refresh')
+    print(f"[Refresh] Cookie refresh_token exists: {'refresh_token' in request.COOKIES}")
+    print(f"[Refresh] Body refresh token exists: {'refresh' in request.data}")
+    
+    if not refresh_token_str:
+        print("[Refresh] Missing refresh token in both cookie and body")
         return Response({'detail': 'Missing refresh token'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        refresh = RefreshToken(refresh_token)
-        # Optionally rotate: issue new refresh and set cookie - for now just return access
+        refresh = RefreshToken(refresh_token_str)
+        # Generate new access token
         access = str(refresh.access_token)
+        
+        # Optional: rotate refresh token (generate new one)
+        new_refresh = str(refresh)
+        
         response = Response({'access': access})
+        # Set new refresh token in httpOnly cookie
+        response.set_cookie(
+            'refresh_token',
+            new_refresh,
+            httponly=True,
+            secure=False,
+            samesite='Lax',
+            path='/',
+            max_age=86400,  # 24 hours
+        )
+        print(f"[Refresh] Success: issued new access token")
         return response
-    except Exception:
+    except Exception as e:
+        print(f"[Refresh Token Error] {str(e)}")
         return Response({'detail': 'Invalid refresh token'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
@@ -354,7 +415,15 @@ def update_profile(request):
 @permission_classes([IsAuthenticated])
 def me(request):
     user = request.user
-    return Response({'id': user.id, 'email': user.email, 'name': user.first_name, 'phone': getattr(user, 'phone', None), 'country': getattr(user, 'country', None)})
+    return Response({
+        'id': user.id, 
+        'email': user.email, 
+        'name': user.first_name, 
+        'phone': getattr(user, 'phone', None), 
+        'country': getattr(user, 'country', None),
+        'is_staff': user.is_staff,
+        'is_superuser': user.is_superuser
+    })
 
 
 # Alerts API
@@ -685,3 +754,84 @@ def asset_current_price(request, symbol):
         'price': float(price_obj.price_usd),
         'timestamp': price_obj.timestamp.isoformat(),
     })
+
+
+# Admin Users Management
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def users_list(request):
+    """List all users or delete a user (admin only)"""
+    User = get_user_model()
+    
+    # Check if user is admin or superuser
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    if request.method == 'GET':
+        # Get all users except admin/superuser accounts
+        users = User.objects.exclude(is_staff=True, is_superuser=True).values('id', 'email', 'username', 'first_name', 'last_name', 'date_joined', 'is_active', 'is_staff', 'is_superuser')
+        user_list = []
+        for user in users:
+            # Get portfolio value for each user
+            try:
+                portfolio = VirtualPortfolio.objects.get(user_id=user['id'])
+                # Calculate equity: cash_balance + value of all holdings
+                holdings_value = Decimal('0')
+                for holding in portfolio.holdings.all():
+                    # Get latest price for this asset
+                    try:
+                        latest_price = PriceHistory.objects.filter(asset=holding.asset).latest('timestamp')
+                        holdings_value += holding.quantity * Decimal(str(latest_price.price_usd))
+                    except PriceHistory.DoesNotExist:
+                        pass
+                equity = float(portfolio.cash_balance + holdings_value)
+            except VirtualPortfolio.DoesNotExist:
+                equity = 0.0
+            
+            user_list.append({
+                'id': user['id'],
+                'email': user['email'],
+                'username': user['username'],
+                'full_name': f"{user['first_name']} {user['last_name']}".strip() or 'N/A',
+                'join_date': user['date_joined'].isoformat(),
+                'status': 'active' if user['is_active'] else 'inactive',
+                'portfolio_value': f"${equity:,.2f}",
+                'is_admin': user['is_staff'] or user['is_superuser'],
+            })
+        return Response(user_list)
+    
+    elif request.method == 'DELETE':
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.get(id=user_id)
+            user.delete()
+            return Response({'detail': 'User deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def user_update_status(request, user_id):
+    """Update user status (active/inactive)"""
+    User = get_user_model()
+    
+    # Check if user is admin or superuser
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    is_active = request.data.get('is_active')
+    if is_active is not None:
+        user.is_active = is_active
+        user.save()
+        return Response({'detail': 'User status updated'})
+    
+    return Response({'error': 'is_active field required'}, status=status.HTTP_400_BAD_REQUEST)

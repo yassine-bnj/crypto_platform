@@ -1,9 +1,25 @@
 "use client"
 
+import { useEffect } from "react"
+import { useAuth } from "@/context/auth"
+import { useRouter } from "next/navigation"
 import Sidebar from "@/components/dashboard/sidebar"
 import PortfolioSection from "@/components/dashboard/portfolio-section"
 
 export default function PortfolioPage() {
+  const { isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/signin")
+    }
+  }, [isAuthenticated, isLoading, router])
+
+  if (isLoading || !isAuthenticated) {
+    return null
+  }
+
   return (
     <div className="flex h-screen bg-background text-foreground">
       <Sidebar />

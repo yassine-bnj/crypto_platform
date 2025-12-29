@@ -1,10 +1,10 @@
 "use client"
 
+import { useEffect } from "react"
+import { useAuth } from "@/context/auth"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import AdminSidebar from "@/components/admin/admin-sidebar"
-import { useAuth } from "@/context/auth"
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { BarChart3, Users, Server, AlertCircle } from "lucide-react"
 import {
   LineChart,
@@ -46,16 +46,17 @@ const apiUsageData = [
 ]
 
 export default function AdminDashboard() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    console.log('[AdminDashboard] Auth status:', { isAuthenticated, isLoading })
+    if (!isLoading && !isAuthenticated) {
       router.push("/admin/login")
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, isLoading, router])
 
-  if (!isAuthenticated) {
+  if (isLoading || !isAuthenticated) {
     return null
   }
 

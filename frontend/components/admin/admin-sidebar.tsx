@@ -2,19 +2,20 @@
 
 import type React from "react"
 import Link from "next/link"
-import { useRouter, usePathname } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { Users, Settings, BarChart3, Server, LogOut, Shield, Moon, Sun } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
+import { useAuth } from "@/context/auth"
 
 export default function AdminSidebar() {
-  const router = useRouter()
   const pathname = usePathname()
   const { theme, toggleTheme } = useTheme()
+  const { logout } = useAuth()
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + "/")
 
   const handleLogout = () => {
-    router.push("/signin")
+    logout()
   }
 
   return (

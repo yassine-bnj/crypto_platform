@@ -4,17 +4,27 @@ import Sidebar from "@/components/dashboard/sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Bell, Plus, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
+import { useAuth } from "@/context/auth"
+import { useRouter } from "next/navigation"
 import { authFetch, API_BASE_URL } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
 import NewAlertModal from "@/components/alerts/new-alert-modal"
 
 export default function AlertsPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const router = useRouter()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [alerts, setAlerts] = useState<Array<any>>([])
   const [loading, setLoading] = useState(false)
   const [notifications, setNotifications] = useState<Array<any>>([])
   const [loadingNotifications, setLoadingNotifications] = useState(false)
   const { toast } = useToast()
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/signin")
+    }
+  }, [isAuthenticated, authLoading, router])
 
   const fetchAlerts = async () => {
     setLoading(true)
@@ -99,6 +109,10 @@ export default function AlertsPage() {
     } catch (e) {
       toast({ title: 'Error', description: 'Could not mark notification' })
     }
+  }
+
+  if (authLoading || !isAuthenticated) {
+    return null
   }
 
   return (

@@ -266,11 +266,50 @@ export async function login(email: string, password: string) {
       setAccessToken(data.access)
       // Set cookie for middleware access
       document.cookie = `access_token=${data.access}; path=/; max-age=3600; SameSite=Lax`
+      // Also store a flag in sessionStorage that user is logged in (helps with refresh)
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('auth_initialized', 'true')
+      }
     }
 
     return data
   } catch (error) {
     console.error("Error logging in:", error)
+    throw error
+  }
+}
+
+export async function adminLogin(email: string, password: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/admin-login/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    })
+
+    const data = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      const message = data.detail || data.message || "Failed to login"
+      throw new Error(message)
+    }
+
+    if (data.access) {
+      setAccessToken(data.access)
+      // Set cookie for middleware access
+      document.cookie = `access_token=${data.access}; path=/; max-age=3600; SameSite=Lax`
+      // Also store a flag in sessionStorage that user is logged in (helps with refresh)
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('auth_initialized', 'true')
+      }
+    }
+
+    return data
+  } catch (error) {
+    console.error("Error logging in as admin:", error)
     throw error
   }
 }
@@ -435,3 +474,79 @@ export async function getAssetPrice(symbol: string): Promise<AssetPrice> {
   return data as AssetPrice
 }
 
+// Admin Users Management
+export type AdminUser = {
+  id: number
+  email: string
+  username: string
+  full_name: string
+  join_date: string
+  status: 'active' | 'inactive'
+  portfolio_value: string
+  is_admin: boolean
+}
+
+export async function getAdminUsers() {
+  try {
+    console.log('[API] Fetching admin users from', `${API_BASE_URL}/admin/users/`)
+    const response = await authFetch(`${API_BASE_URL}/admin/users/`, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.error('[API] Error response:', response.status, errorData)
+      const message = (errorData as any)?.error || (errorData as any)?.detail || `HTTP ${response.status}`
+      throw new Error(`Failed to fetch users: ${message}`)
+    }
+
+    const data = await response.json()
+    console.log('[API] Users fetched successfully:', data)
+    return data as AdminUser[]
+  } catch (error) {
+    console.error('[API] Error fetching users:', error)
+    throw error
+  }
+}
+
+export async function deleteAdminUser(userId: number) {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/admin/users/`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to delete user')
+    }
+
+    return true
+  } catch (error) {
+    console.error('Error deleting user:', error)
+    throw error
+  }
+}
+
+export async function updateAdminUserStatus(userId: number, isActive: boolean) {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/admin/users/${userId}/status/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ is_active: isActive }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to update user status')
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error updating user status:', error)
+    throw error
+  }
+}

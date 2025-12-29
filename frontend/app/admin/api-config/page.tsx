@@ -24,20 +24,16 @@ const defaultConfigs: APIConfig[] = [
 ]
 
 export default function APIConfig() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
   const [configs, setConfigs] = useState<APIConfig[]>(defaultConfigs)
   const [changes, setChanges] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       router.push("/admin/login")
     }
-  }, [isAuthenticated, router])
-
-  if (!isAuthenticated) {
-    return null
-  }
+  }, [isAuthenticated, isLoading, router])
 
   const handleFrequencyChange = (index: number, frequency: number) => {
     const newConfigs = [...configs]
@@ -70,6 +66,10 @@ export default function APIConfig() {
       error: "bg-red-500/20 text-red-400",
     }
     return statusIcons[status as keyof typeof statusIcons]
+  }
+
+  if (isLoading || !isAuthenticated) {
+    return null
   }
 
   return (

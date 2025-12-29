@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 
 export default function AdminLogin() {
   const router = useRouter()
-  const { login } = useAuth()
+  const { adminLogin } = useAuth()
   const { toast } = useToast()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -24,9 +24,9 @@ export default function AdminLogin() {
     setIsLoading(true)
 
     try {
-      console.log('[AdminLogin] Attempting login:', email)
-      await login(email, password)
-      console.log('[AdminLogin] Login successful, redirecting...')
+      console.log('[AdminLogin] Attempting admin login:', email)
+      await adminLogin(email, password)
+      console.log('[AdminLogin] Admin login successful, redirecting...')
       toast({ title: "Admin logged in", description: "Welcome to admin panel" })
       router.push("/admin")
       console.log('[AdminLogin] Redirect initiated')

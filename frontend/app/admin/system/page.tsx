@@ -35,18 +35,14 @@ const systemLogs = [
 ]
 
 export default function SystemMonitoring() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       router.push("/admin/login")
     }
-  }, [isAuthenticated, router])
-
-  if (!isAuthenticated) {
-    return null
-  }
+  }, [isAuthenticated, isLoading, router])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -72,6 +68,10 @@ export default function SystemMonitoring() {
       default:
         return "bg-gray-500/20 text-gray-400"
     }
+  }
+
+  if (isLoading || !isAuthenticated) {
+    return null
   }
 
   return (
