@@ -1,0 +1,139 @@
+services:
+  # Base de données PostgreSQL
+  db:
+    image: postgres:15
+    container_name: crypto_db
+    environment:
+      POSTGRES_DB: crypto_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crypto_network
+
+  # Cache Redis
+  redis:
+    image: redis:7
+    container_name: crypto_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crypto_network
+
+  # Backend Django/DRF
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto_backend
+    command: >
+      sh -c "
+      echo 'Waiting for db...';
+      while ! nc -z db 5432; do sleep 1; done;
+      echo 'Waiting for redis...';
+      while ! nc -z redis 6379; do sleep 1; done;
+      echo 'Running migrations...';
+      python manage.py migrate --noinput;
+      echo 'Collecting static...';
+      python manage.py collectstatic --noinput;
+      echo 'Starting gunicorn...';
+      exec gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --workers 4
+      "
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgres://postgres:admin123@db:5432/crypto_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    networks:
+      - crypto_network
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto_celery_worker
+    command: celery -A backend worker -l info
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://postgres:admin123@db:5432/crypto_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - crypto_network
+
+  # Celery Beat Scheduler
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto_celery_beat
+    command: celery -A backend beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://postgres:admin123@db:5432/crypto_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - crypto_network
+
+  # Frontend Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    container_name: crypto_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NODE_ENV=production
+    networks:
+      - crypto_network
+
+volumes:
+  postgres_data:
+
+networks:
+  crypto_network:
+    driver: bridge

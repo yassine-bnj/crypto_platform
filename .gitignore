@@ -1,12 +1,22 @@
+# Environment Variables
+.env
+.env.local
+.env.*.local
+.env.production
+
 # Python
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.env
 venv/
 env/
+.venv/
 *.sqlite3
+*.egg-info/
+dist/
+build/
+*.egg
 
 # Django
 *.log
@@ -15,12 +25,36 @@ env/
 media/
 staticfiles/
 db.sqlite3
-
-# VSCode
-.vscode/
-
-# PyCharm
-.idea/
-
-# Celery
 celerybeat-schedule
+
+# Frontend
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.npm
+.eslintcache
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# OS
+Thumbs.db
+.DS_Store
+
