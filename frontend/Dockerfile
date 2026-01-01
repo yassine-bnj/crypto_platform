@@ -11,6 +11,7 @@ COPY . .
 RUN npm install -g pnpm
 
 # Installer les dépendances
+ENV CI=true
 RUN pnpm install --no-frozen-lockfile
 
 # Builder l'application
