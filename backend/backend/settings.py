@@ -99,7 +99,7 @@ else:
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.environ.get('POSTGRES_DB', 'crypto_db'),
             'USER': os.environ.get('POSTGRES_USER', 'postgres'),
-            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'admin123'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
             'HOST': os.environ.get('DB_HOST', 'localhost'),
             'PORT': os.environ.get('DB_PORT', '5432'),
         }
@@ -175,9 +175,13 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 
-# Celery Beat utilise django_celery_beat (tâches stockées en DB)
-# Utilisez: python manage.py setup_periodic_task
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+# Celery Beat schedule: run alert checker every minute
+CELERY_BEAT_SCHEDULE = {
+    'check-alerts-every-minute': {
+        'task': 'core.tasks.check_alerts',
+        'schedule': 60.0,
+    },
+}
 
 # Email configuration — SendGrid API (avoid SMTP starttls issues on Python 3.14)
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
