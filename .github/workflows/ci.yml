@@ -99,7 +99,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Run tests
-        run: pnpm test --passWithNoTests
+        run: pnpm exec jest --passWithNoTests
 
       - name: Build
         env:
