@@ -1,5 +1,52 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
 
+// --- Simple fetch wrapper used in tests (get/post) ---
+function buildUrl(path: string) {
+  if (path.startsWith('http')) return path
+  return `${API_BASE_URL}${path}`
+}
+
+function withAuthHeaders(options?: RequestInit): RequestInit {
+  try {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null
+    const headers = {
+      ...(options?.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+    return { ...options, headers }
+  } catch {
+    return options || {}
+  }
+}
+
+export const apiService = {
+  async get(path: string, options?: RequestInit) {
+    const res = await fetch(buildUrl(path), { ...withAuthHeaders(options), method: 'GET' })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || err.detail || `Request failed with status ${res.status}`)
+    }
+    return res.json()
+  },
+
+  async post(path: string, data?: any, options?: RequestInit) {
+    const res = await fetch(buildUrl(path), {
+      ...withAuthHeaders(options),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...((withAuthHeaders(options).headers as Record<string, string>) || {}),
+      },
+      body: data ? JSON.stringify(data) : undefined,
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(body.error || body.detail || `Request failed with status ${res.status}`)
+    }
+    return body
+  },
+}
+
 export interface PriceHistoryItem {
   symbol: string
   name: string
