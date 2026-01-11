@@ -835,3 +835,48 @@ def user_update_status(request, user_id):
         return Response({'detail': 'User status updated'})
     
     return Response({'error': 'is_active field required'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+def metrics(request):
+    """Prometheus metrics endpoint"""
+    from django.http import HttpResponse
+    from django.contrib.auth import get_user_model
+    from .models import Asset, Alert
+    
+    User = get_user_model()
+    
+    # Collect metrics
+    total_users = User.objects.count()
+    active_users = User.objects.filter(is_active=True).count()
+    total_assets = Asset.objects.count()
+    total_alerts = Alert.objects.count()
+    active_alerts = Alert.objects.filter(is_active=True).count()
+    
+    # Format as Prometheus metrics
+    metrics_text = f"""# HELP users_total Total number of users
+# TYPE users_total gauge
+users_total {total_users}
+
+# HELP users_active Active users count
+# TYPE users_active gauge
+users_active {active_users}
+
+# HELP assets_total Total number of assets
+# TYPE assets_total gauge
+assets_total {total_assets}
+
+# HELP alerts_total Total alerts
+# TYPE alerts_total gauge
+alerts_total {total_alerts}
+
+# HELP alerts_active Active alerts
+# TYPE alerts_active gauge
+alerts_active {active_alerts}
+
+# HELP django_up Django application is up
+# TYPE django_up gauge
+django_up 1
+"""
+    
+    return HttpResponse(metrics_text, content_type='text/plain; version=0.0.4')

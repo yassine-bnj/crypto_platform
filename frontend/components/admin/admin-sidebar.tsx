@@ -45,6 +45,15 @@ export default function AdminSidebar() {
           label="User Management"
           active={isActive("/admin/users")}
         />
+        <a
+          href="http://localhost:3001"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full px-4 py-2 rounded-lg transition-colors flex items-center gap-3 text-sidebar-foreground hover:bg-sidebar-accent"
+        >
+          <Server size={20} />
+          <span className="text-sm font-medium">Monitoring (Grafana)</span>
+        </a>
         <NavItem
           href="/admin/api-config"
           icon={<Server size={20} />}
@@ -54,7 +63,7 @@ export default function AdminSidebar() {
         <NavItem
           href="/admin/system"
           icon={<Settings size={20} />}
-          label="System Monitoring"
+          label="System Settings"
           active={isActive("/admin/system")}
         />
       </nav>
