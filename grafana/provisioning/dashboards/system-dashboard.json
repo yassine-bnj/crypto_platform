@@ -45,7 +45,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -55,7 +55,7 @@
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "expr": "process_resident_memory_bytes / 1024 / 1024",
+          "expr": "sum(process_resident_memory_bytes / 1024 / 1024)",
           "legendFormat": "Backend RAM (MB)",
           "refId": "A"
         }
@@ -100,7 +100,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -110,7 +110,7 @@
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "expr": "process_cpu_seconds_total",
+          "expr": "sum(process_cpu_seconds_total)",
           "legendFormat": "CPU Seconds (Total)",
           "refId": "A"
         }
@@ -155,7 +155,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -165,7 +165,7 @@
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "expr": "process_open_fds",
+          "expr": "sum(process_open_fds)",
           "legendFormat": "Open File Descriptors",
           "refId": "A"
         }
@@ -220,9 +220,9 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
-          "fields": "",
+          "fields": "/^Memory %$/",
           "values": false
         },
         "showThresholdLabels": false,
@@ -232,7 +232,7 @@
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "expr": "(process_resident_memory_bytes / 268435456) * 100",
+          "expr": "avg((process_resident_memory_bytes / 268435456) * 100)",
           "legendFormat": "Memory %",
           "refId": "A"
         }
