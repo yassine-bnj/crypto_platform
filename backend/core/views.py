@@ -227,9 +227,18 @@ def login_view(request):
     except User.DoesNotExist:
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
+    # Block login if the account is disabled
+    if not user.is_active:
+        return Response({'detail': 'Account disabled'}, status=status.HTTP_403_FORBIDDEN)
+
     user_auth = authenticate(username=user.username, password=password)
     if not user_auth:
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    # Update last_login to mark activity
+    from django.utils import timezone
+    user_auth.last_login = timezone.now()
+    user_auth.save(update_fields=["last_login"])
 
     refresh = RefreshToken.for_user(user_auth)
     access = str(refresh.access_token)
@@ -267,10 +276,18 @@ def admin_login_view(request):
     # Check if user is staff or superuser
     if not (user.is_staff or user.is_superuser):
         return Response({'detail': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    # Block login if the account is disabled
+    if not user.is_active:
+        return Response({'detail': 'Account disabled'}, status=status.HTTP_403_FORBIDDEN)
 
     user_auth = authenticate(username=user.username, password=password)
     if not user_auth:
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    # Update last_login to mark admin activity
+    from django.utils import timezone
+    user_auth.last_login = timezone.now()
+    user_auth.save(update_fields=["last_login"])
 
     refresh = RefreshToken.for_user(user_auth)
     access = str(refresh.access_token)
@@ -303,6 +320,22 @@ def refresh_token(request):
 
     try:
         refresh = RefreshToken(refresh_token_str)
+        # Block refresh if user is disabled
+        try:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            user_id = refresh.payload.get('user_id')
+            if user_id:
+                u = User.objects.filter(id=user_id).first()
+                if u and not u.is_active:
+                    # Clear cookie and reject
+                    resp = Response({'detail': 'Account disabled'}, status=status.HTTP_403_FORBIDDEN)
+                    resp.delete_cookie('refresh_token', path='/')
+                    return resp
+        except Exception:
+            # If check fails, continue normally
+            pass
+
         # Generate new access token
         access = str(refresh.access_token)
         
@@ -340,6 +373,22 @@ def logout_view(request):
                 rt.blacklist()
             except AttributeError:
                 # blacklist not enabled/available
+                pass
+
+            # Mark user as inactive session by clearing last_login
+            try:
+                from django.contrib.auth import get_user_model
+                from django.utils import timezone
+                User = get_user_model()
+                user_id = rt['user_id'] if hasattr(rt, '__getitem__') else rt.payload.get('user_id')
+                if user_id:
+                    user = User.objects.filter(id=user_id).first()
+                    if user:
+                        # Set last_login to a time outside the 24h window
+                        user.last_login = timezone.now() - timezone.timedelta(days=2)
+                        user.save(update_fields=["last_login"])
+            except Exception:
+                # Non-critical: if we cannot update, proceed with logout
                 pass
         except Exception:
             pass
@@ -835,6 +884,76 @@ def user_update_status(request, user_id):
         return Response({'detail': 'User status updated'})
     
     return Response({'error': 'is_active field required'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_dashboard_stats(request):
+    """Get admin dashboard statistics"""
+    from django.contrib.auth import get_user_model
+    from django.contrib.sessions.models import Session
+    from django.db.models import Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    # Check if user is admin
+    if not request.user.is_staff:
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    User = get_user_model()
+    now_time = timezone.now()
+    yesterday = now_time - timedelta(days=1)
+    last_month = now_time - timedelta(days=30)
+    
+    # Total users and growth
+    total_users = User.objects.count()
+    users_last_month = User.objects.filter(date_joined__gte=last_month).count()
+    users_growth = round((users_last_month / total_users * 100), 1) if total_users > 0 else 0
+    
+    # Active sessions (users active in last 24h)
+    active_sessions = User.objects.filter(last_login__gte=yesterday).count()
+    
+    # API calls (static for now)
+    api_calls_24h = 45231
+    
+    # System health (static for now)
+    system_health = 98.5
+    
+    # User growth data (static for now)
+    user_growth_data = [
+        { 'month': 'Jan', 'users': 400, 'active': 240 },
+        { 'month': 'Feb', 'users': 520, 'active': 310 },
+        { 'month': 'Mar', 'users': 680, 'active': 420 },
+        { 'month': 'Apr', 'users': 890, 'active': 560 },
+        { 'month': 'May', 'users': 1050, 'active': 670 },
+        { 'month': 'Jun', 'users': 1234, 'active': 780 },
+    ]
+    
+    # API usage data (static for now)
+    api_usage_data = [
+        { 'time': '00:00', 'requests': 2400 },
+        { 'time': '04:00', 'requests': 2210 },
+        { 'time': '08:00', 'requests': 2290 },
+        { 'time': '12:00', 'requests': 2000 },
+        { 'time': '16:00', 'requests': 2181 },
+        { 'time': '20:00', 'requests': 2500 },
+        { 'time': '24:00', 'requests': 2300 },
+    ]
+    
+    return Response({
+        'stats': {
+            'total_users': total_users,
+            'users_growth': f"+{users_growth}%",
+            'active_sessions': active_sessions,
+            'sessions_growth': "+8%",  # Can be calculated similar to users
+            'api_calls_24h': api_calls_24h,
+            'api_growth': "+23%",
+            'system_health': system_health,
+            'health_status': 'Optimal' if system_health > 90 else 'Degraded'
+        },
+        'user_growth_data': user_growth_data,
+        'api_usage_data': api_usage_data
+    })
 
 
 @api_view(['GET'])

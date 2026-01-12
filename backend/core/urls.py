@@ -30,4 +30,5 @@ urlpatterns = [
     # Admin users management
     path('admin/users/', views.users_list, name='users_list'),
     path('admin/users/<int:user_id>/status/', views.user_update_status, name='user_update_status'),
+    path('admin/dashboard/stats/', views.admin_dashboard_stats, name='admin_dashboard_stats'),
 ]

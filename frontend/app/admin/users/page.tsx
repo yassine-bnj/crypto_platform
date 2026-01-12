@@ -65,7 +65,8 @@ export default function UsersManagement() {
 
   const handleToggleStatus = async (userId: number, currentStatus: string) => {
     try {
-      const newStatus = currentStatus === 'active'
+      // Toggle: if currently active -> set inactive; if inactive -> set active
+      const newStatus = currentStatus !== 'active'
       await updateAdminUserStatus(userId, newStatus)
       setUsers(
         users.map((user) =>
